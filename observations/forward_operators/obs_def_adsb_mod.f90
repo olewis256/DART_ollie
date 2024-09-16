@@ -31,7 +31,7 @@
 
 ! BEGIN DART PREPROCESS GET_EXPECTED_OBS_FROM_DEF
 !         case(ADSB_HEIGHT)
-!            call get_expected_adsb_height(state_handle, ens_size, obs_def%key, expected_obs, istatus)
+!            call get_expected_adsb_height(state_handle, ens_size, location, obs_def%key, expected_obs, istatus)
 ! END DART PREPROCESS GET_EXPECTED_OBS_FROM_DEF
 
 
@@ -63,7 +63,7 @@ use    utilities_mod, only : register_module, error_handler, E_ERR, &
                              ascii_file_format
 use     location_mod, only : location_type, set_location, get_location, &
                              is_vertical, &
-                             VERTISHEIGHT, get_dist
+                             VERTISHEIGHT
 use  assim_model_mod, only : interpolate
 
 use     obs_kind_mod, only : QTY_TEMPERATURE, QTY_SPECIFIC_HUMIDITY, &
@@ -352,7 +352,7 @@ write(*, *)
 end subroutine interactive_adsb_data
 
 !> Distributed version of get_expected_adsb_height
- subroutine get_expected_adsb_height(state_handle, ens_size,  adsbkey, ray_height, istatus)
+ subroutine get_expected_adsb_height(state_handle, ens_size,  location, adsbkey, ray_height, istatus)
 !------------------------------------------------------------------------------
 !
 ! Purpose: Calculate the ray altitude after integration
@@ -374,6 +374,7 @@ end subroutine interactive_adsb_data
 
 type(ensemble_type), intent(in)  :: state_handle
 integer,             intent(in)  :: ens_size
+type(location_type), intent(in)  :: location
 integer,             intent(in)  :: adsbkey
 real(r8),            intent(out) :: ray_height(ens_size)
 integer,             intent(out) :: istatus(ens_size)
@@ -406,14 +407,6 @@ lon      = adsb_data(adsbkey)%lon_rec                       ! degree: 0 to 360
 lat      = adsb_data(adsbkey)%lat_rec                       ! degree: -90 to 90
 height0   = adsb_data(adsbkey)%alt_rec                    ! (m)
 
-where (lon > 360.0_r8)
-    lon = lon - 360.0_r8
-end where
-
-where (lon < 0.0_r8)
-    lon = lon + 360.0_r8
-end where
-
 ! to use track_status() start out with istatus all success.
 istatus = 0
 
@@ -440,9 +433,6 @@ INTEGRATE: do
 
    iter = iter + 1
 
-   WRITE(*,*) xx, yy, zz
-   WRITE(*,*) iter
-
    !  integrate to one direction of the ray for one step
    ! HK These are now different for each ensemble member
    xx = xx + adsb_data(adsbkey)%step_size * nxx
@@ -451,14 +441,15 @@ INTEGRATE: do
 
    ! convert the location of the point to geodetic coordinates 
    ! height(m), lat, lon(deg)
-   WRITE(*,*) "ens_size:", ens_size
-   WRITE(*,*) adsb_data(adsbkey)%ray_direction(1), adsb_data(adsbkey)%ray_direction(2), adsb_data(adsbkey)%ray_direction(3), adsb_data(adsbkey)%rfict, adsb_data(adsbkey)%lon_rec, adsb_data(adsbkey)%lat_rec, adsb_data(adsbkey)%alt_rec
-   call carte2geo(xx, yy, zz, ens_size, height1, lat1, lon1, adsb_data(adsbkey)%rfict )  
+
+  call carte2geo(xx, yy, zz, ens_size, height1, lat1, lon1, adsb_data(adsbkey)%rfict )  
    
    ! compute the angle subtended by the ray at the centre
    ! of the Earth (this defines the end point of the ray)
 
    call haversine(lon, lat, lon1, lat1, ens_size, arc)
+   WRITE(*,*) height1, arc, adsb_data(adsbkey)%aircraft_arc_ang
+
    if (any(arc >= adsb_data(adsbkey)%aircraft_arc_ang)) exit INTEGRATE
    
 
@@ -488,9 +479,9 @@ INTEGRATE: do
    ref_grad = ref_ray * (ref_up - ref_low) / 2.0_r8
 
    ! update vertical component of ray direction
-   nxx = (ref_grad * cos(lat1*DEG2RAD) * cos(lon1*DEG2RAD)) * adsb_data(adsbkey)%step_size
-   nyy = (ref_grad * cos(lat1*DEG2RAD) * sin(lon1*DEG2RAD)) * adsb_data(adsbkey)%step_size
-   nzz = (ref_grad * sin(lat1*DEG2RAD)) * adsb_data(adsbkey)%step_size
+   nxx = nxx + (ref_grad * cos(lat1*DEG2RAD) * cos(lon1*DEG2RAD)) * adsb_data(adsbkey)%step_size
+   nyy = nyy + (ref_grad * cos(lat1*DEG2RAD) * sin(lon1*DEG2RAD)) * adsb_data(adsbkey)%step_size
+   nzz = nzz + (ref_grad * sin(lat1*DEG2RAD)) * adsb_data(adsbkey)%step_size
 
 end do INTEGRATE
 
@@ -542,7 +533,7 @@ integer,             intent(out) :: istatus0(ens_size)
 real(r8), parameter::  rd = 287.05_r8, rv = 461.51_r8, c1 = 77.6d-6 , &
                        c2 = 3.73d-1,  rdorv = rd/rv
 
-real(r8) :: lon2
+real(r8) :: lon2(ens_size)
 real(r8) :: t(ens_size), q(ens_size), p(ens_size), ew(ens_size)
 real(r8) :: t_dummy(ens_size), q_dummy(ens_size), p_dummy(ens_size)
 integer  :: this_istatus(ens_size)
@@ -557,6 +548,14 @@ if ( .not. module_initialized ) call initialize_module
 istatus0 = 0
 ref00 = missing_r8
 
+lon2 = lons
+where (lons > 360.0_r8)
+    lon2 = lons - 360.0_r8
+end where
+
+where (lons < 0.0_r8)
+    lon2 = lons + 360.0_r8
+end where
 
 
 !  required variable units for calculation of GPS refractivity
@@ -567,12 +566,9 @@ ref00 = missing_r8
 do imem = 1, ens_size
      
 
-      location = set_location( lons(imem), lats(imem), height(imem), VERTISHEIGHT )
-      WRITE(*,*) lons(imem), lats(imem), height(imem)
+      location = set_location( lon2(imem), lats(imem), height(imem), VERTISHEIGHT )
 
-      
       call interpolate(state_handle, ens_size, location,  QTY_TEMPERATURE, t_dummy, this_istatus)
-      WRITE(*,*) "temp: ", t_dummy(imem)
       call track_status(ens_size, this_istatus, ref00, istatus0, return_now)
       if (return_now) return
 
