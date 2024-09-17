@@ -280,7 +280,7 @@ end subroutine read_adsb_data
 subroutine interactive_adsb_data(adsbkey)
 !----------------------------------------------------------------------
 !
-! Interactively prompt for the info needed to create a gps refractivity 
+! Interactively prompt for the info needed to create a ADS-B refractivity 
 ! observation.  Increments the key number and returns it.
 
 integer, intent(out) :: adsbkey
@@ -289,11 +289,8 @@ real(r8) :: nx, ny, nz, rfict0, ds, aircraft_arc_ang, lat_rec, lon_rec, alt_rec
 
 if ( .not. module_initialized ) call initialize_module
 
-!Now interactively obtain reflectivity type information
-! valid choices are local or non-local
-
 write(*, *)
-write(*, *) 'Beginning to inquire information on reflectivity type.'
+write(*, *) 'Beginning to inquire information on ADS-B type.'
 write(*, *)
 
 100 continue
@@ -366,10 +363,9 @@ end subroutine interactive_adsb_data
 !    ray_height: altitude of ray after integration
 !    istatus:  =0 normal; =1 outside of domain.
 !------------------------------------------------------------------------------
-!  Author: Hui Liu 
-!  Version 1.1: June 15, 2004: Initial version CAM
+!  Author: Ollie Lewis 
+!  Version 1.1: Sep 17 2024
 !
-!  Version 1.2: July 29, 2005: revised for new obs_def and WRF
 !------------------------------------------------------------------------------
 
 type(ensemble_type), intent(in)  :: state_handle
@@ -384,13 +380,13 @@ integer,             intent(out) :: istatus(ens_size)
 
 real(r8) :: ref_ray(ens_size), ref_up(ens_size), ref_low(ens_size), ref_grad(ens_size)
 real(r8) :: ref00(ens_size)
-real(r8) :: xx(ens_size), yy(ens_size), zz(ens_size)     
-real(r8) :: nxx(ens_size), nyy(ens_size), nzz(ens_size)  
+real(r8) :: xx(ens_size), yy(ens_size), zz(ens_size)   ! cartesian ray positions   
+real(r8) :: nxx(ens_size), nyy(ens_size), nzz(ens_size)  ! ray direction in cartesian coords
 real(r8) :: height1(ens_size)   ! height of ray is different for each ensemble member
-real(r8) :: height0(ens_size)
+real(r8) :: height0(ens_size)   
 integer  :: this_istatus(ens_size)
 
-real(r8) :: nx, ny, nz          ! direction of ray at receiver              ! receiver location in Cartesian coordinate
+real(r8) :: nx, ny, nz          ! direction of ray at receiver              
 real(r8) :: xo(ens_size), yo(ens_size), zo(ens_size)
 real(r8) :: lat1(ens_size), lon1(ens_size)
 real(r8) :: arc(ens_size)
@@ -448,7 +444,6 @@ INTEGRATE: do
    ! of the Earth (this defines the end point of the ray)
 
    call haversine(lon, lat, lon1, lat1, ens_size, arc)
-   WRITE(*,*) height1, arc, adsb_data(adsbkey)%aircraft_arc_ang
 
    if (any(arc >= adsb_data(adsbkey)%aircraft_arc_ang)) exit INTEGRATE
    
@@ -456,7 +451,6 @@ INTEGRATE: do
    ! get the refractivity at this ray point(ref00)
    call ref_local(state_handle, ens_size, lat1, lon1, height1, ref00, this_istatus)
    call track_status(ens_size, this_istatus, ray_height, istatus, return_now)
-   WRITE(*,*) this_istatus
    if (return_now) return
 
    ref_ray = ref00
@@ -485,12 +479,9 @@ INTEGRATE: do
 
 end do INTEGRATE
 
-! finish the integration of the excess phase along the ray
+! finish the integration of the height of the ray
 
 where(istatus == 0) ray_height = height1    ! in m
-
-! print*, 'xx = ', lon, lat, height, ro_ref
-
 
 
 ! make sure return is missing_r8 if failure.
@@ -558,7 +549,7 @@ where (lons < 0.0_r8)
 end where
 
 
-!  required variable units for calculation of GPS refractivity
+!  required variable units for calculation of refractivity
 !   t :  Kelvin, from top to bottom
 !   q :  kg/kg, from top to bottom
 !   p :  mb
