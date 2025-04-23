@@ -188,6 +188,7 @@ LANDSAT_4_TM,35,4,60,ir,rtcoef_landsat_4_tm.dat
 LANDSAT_5_TM,35,5,60,ir,rtcoef_landsat_5_tm.dat
 LANDSAT_7_TM,35,7,60,ir,rtcoef_landsat_7_tm.dat
 LANDSAT_8_TIRS,35,8,66,ir,rtcoef_landsat_8_tirs.dat
+LANDSAT_9_TIRS,35,9,66,ir,rtcoef_landsat_9_tirs.dat
 JASON_2_AMR,36,2,67,mw,rtcoef_jason_2_amr.dat
 GPM_1_GMI,37,1,71,mw,rtcoef_gpm_1_gmi.dat
 GPM_1_DPR,37,1,105,mw,rtcoef_gpm_1_dpr.dat

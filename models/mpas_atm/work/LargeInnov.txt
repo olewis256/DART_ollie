@@ -1,0 +1,4 @@
+Any observations flagged as bad are dumped into the last bin.
+   day   secs    lon      lat    level         obs    prior   zscore   key   kind
+
+last bin contains all (flagged) bad observations

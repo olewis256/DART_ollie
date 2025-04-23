@@ -1,0 +1,41 @@
+ obs_sequence
+obs_type_definitions
+           1
+         330 LANDSAT_8_TIRS_TB              
+  num_copies:            8  num_qc:            2
+  num_obs:            1  max_num_obs:            1
+observations                                                    
+truth                                                           
+prior ensemble mean                                             
+posterior ensemble mean                                         
+prior ensemble spread                                           
+posterior ensemble spread                                       
+prior ensemble member      1                                    
+posterior ensemble member      1                                
+Quality Control                                                 
+DART quality control                                            
+  first:            1  last:            1
+ OBS            1
+   286.67951849193935     
+   288.06863740443521     
+   288.06557791962990     
+   288.06525111009546     
+   1.9349762418419736E-002
+   1.9347645918881860E-002
+   288.02447134391588     
+   288.02414897828817     
+   0.0000000000000000     
+   0.0000000000000000     
+          -1          -1          -1
+obdef
+loc3d
+     0.000000000000000        0.1277967696966680         0.000000000000000     -2
+kind
+         330
+ visir
+   7.2854746482187807        65.241998031733175       -888888.00000000000       -888888.00000000000     
+          35           9          66           1
+  -888888.00000000000     
+           1
+  1000          0
+   1.5000000000000000     
