@@ -8,24 +8,34 @@
 &perfect_model_obs_nml
    read_input_state_from_file = .true.
    single_file_in             = .false.
+<<<<<<< HEAD
    input_state_files          = '/glade/derecho/scratch/olewis/data/member01/restart.2024-05-08_18.00.00.nc'
    init_time_days             = -1
    init_time_seconds          = -1
+=======
+   input_state_files          = 'x1.10242.init.nc'
+   init_time_days             = 0
+   init_time_seconds          = 1000
+>>>>>>> 7b2de5762a247a2c808bb5a23542e0dd2f8bc5f7
 
    write_output_state_to_file = .false.
-   single_file_out            = .false.
-   output_state_files         = 'perfect_restart.nc'
+   single_file_out            = .true.
+   output_state_files         = 'x1.10242.output.nc'
    output_interval            = 1
 
    async                      = 0
    adv_ens_command            = './advance_model.csh'
 
+<<<<<<< HEAD
    obs_seq_in_file_name       = 'obs_seq.1in'
+=======
+   obs_seq_in_file_name       = 'obs_seq.1obs'
+>>>>>>> 7b2de5762a247a2c808bb5a23542e0dd2f8bc5f7
    obs_seq_out_file_name      = 'obs_seq.out'
-   first_obs_days             = -1
-   first_obs_seconds          = -1
-   last_obs_days              = -1
-   last_obs_seconds           = -1
+   first_obs_days             = 0
+   first_obs_seconds          = 1000
+   last_obs_days              = 0
+   last_obs_seconds           = 1000
 
    trace_execution            = .true.
    output_timestamps          = .false.
@@ -35,22 +45,23 @@
   /
 
 &filter_nml
+   single_file_in           = .false.,
    async                    = 0
    adv_ens_command          = './advance_model.csh'
-   ens_size                 = 3
+   ens_size                 = 30
    output_members           = .true.
    obs_sequence_in_name     = 'obs_seq.out'
    obs_sequence_out_name    = 'obs_seq.final'
    input_state_file_list    = 'filter_in.txt'
    output_state_file_list   = 'filter_out.txt'
-   init_time_days           = -1
-   init_time_seconds        = -1
-   first_obs_days           = -1
-   first_obs_seconds        = -1
-   last_obs_days            = -1
-   last_obs_seconds         = -1
+   init_time_days           = 0
+   init_time_seconds        = 1000
+   first_obs_days           = 0
+   first_obs_seconds        = 1000
+   last_obs_days            = 0
+   last_obs_seconds         = 1001
    num_output_state_members = 0
-   num_output_obs_members   = 3
+   num_output_obs_members   = 1
    output_interval          = 1
    num_groups               = 1
    distributed_state        = .true.
@@ -60,23 +71,25 @@
    trace_execution          = .false.
    silence                  = .false.
 
-   stages_to_write          = 'preassim', 'output'
-   output_members           = .true.
-   output_mean              = .true.
-   output_sd                = .true.
+   perturb_from_single_instance = .true.,
+   perturbation_amplitude       = 5000.0,
+
+   output_members           = .false.
+   output_mean              = .false.
+   output_sd                = .false.
    write_all_stages_at_end  = .false.
 
    inf_flavor                  = 2,                       0,
    inf_initial_from_restart    = .false.,                .true.,
    inf_sd_initial_from_restart = .false.,                .true.,
    inf_deterministic           = .true.,                  .true.,
-   inf_initial                 = 1.0,                     1.0
-   inf_sd_initial              = 0.6,                     0.0
-   inf_damping                 = 0.9,                     1.0
+   inf_initial                 = 50.0,                     1.0
+   inf_sd_initial              = 1600.0,                     0.0
+   inf_damping                 = 0.1,                     1.0
    inf_lower_bound             = 1.0,                     1.0
-   inf_upper_bound             = 1000.0,               1000000.0
+   inf_upper_bound             = 100000.0,               1000000.0
    inf_sd_lower_bound          = 0.6,                     0.0
-   inf_sd_max_change           = 1.05,                    1.05,
+   inf_sd_max_change           = 16.0,                    1.05,
   /
 
 &quality_control_nml
@@ -115,12 +128,11 @@
 &location_nml
    horiz_dist_only             = .false.
    vert_normalization_pressure = 100000.0
-   vert_normalization_height   = 30000.0
+   vert_normalization_height   = 35000.0
    vert_normalization_level    = 20.0
    vert_normalization_scale_height = 2.0
    approximate_distance        = .false.
-   nlon                        = 141
-   nlat                        = 72
+
    output_box_info             = .false.
    print_box_level             = 0
   /
@@ -144,19 +156,22 @@
   /
 
 &obs_kind_nml
+<<<<<<< HEAD
    assimilate_these_obs_types = 'CTT',
                                 
 
    evaluate_these_obs_types = ''
+=======
+   assimilate_these_obs_types = 'LANDSAT_8_TIRS_TB'
+>>>>>>> 7b2de5762a247a2c808bb5a23542e0dd2f8bc5f7
   /
-
-&obs_def_gps_nml
-   max_gpsro_obs = 100000
-  /
-
 
 &model_nml
+<<<<<<< HEAD
    init_template_filename       = '/glade/derecho/scratch/olewis/data/member01/restart.2024-05-08_18.00.00.nc'
+=======
+   init_template_filename       = 'x1.10242.init.nc'
+>>>>>>> 7b2de5762a247a2c808bb5a23542e0dd2f8bc5f7
    assimilation_period_days     = 0
    assimilation_period_seconds  = 21600
    model_perturbation_amplitude = 0.0001
@@ -245,8 +260,17 @@
                              '../../../observations/forward_operators/obs_def_vortex_mod.f90', 
                              '../../../observations/forward_operators/obs_def_rel_humidity_mod.f90', 
                              '../../../observations/forward_operators/obs_def_dew_point_mod.f90',
+<<<<<<< HEAD
                              '../../../observations/forward_operators/obs_def_ctt_mod.f90'
    quantity_files          = '../../../assimilation_code/modules/observations/atmosphere_quantities_mod.f90'
+=======
+                             '../../../observations/forward_operators/obs_def_rttov13_mod.f90'
+   quantity_files          = '../../../assimilation_code/modules/observations/atmosphere_quantities_mod.f90',
+                             '../../../assimilation_code/modules/observations/chemistry_quantities_mod.f90',
+                             '../../../assimilation_code/modules/observations/land_quantities_mod.f90',
+                             '../../../assimilation_code/modules/observations/ocean_quantities_mod.f90',
+                             '../../../assimilation_code/modules/observations/space_quantities_mod.f90'
+>>>>>>> 7b2de5762a247a2c808bb5a23542e0dd2f8bc5f7
   /
 
 &obs_sequence_tool_nml
@@ -265,7 +289,7 @@
    max_lon           = 360.0
    gregorian_cal     = .true.
    keep_types        = .true.
-   obs_types = 'RADIOSONDE_TEMPERATURE'
+   obs_types = 'CTT'
   /
 
 # The times in the namelist for the obs_diag program are vectors
@@ -360,21 +384,22 @@
    quantity_of_interest = 'QTY_V_WIND_COMPONENT'
    quantity_of_interest = 'QTY_DENSITY'
    quantity_of_interest = 'QTY_VAPOR_MIXING_RATIO'
+   quantity_of_interest = 'QTY_RADIANCE'
 
 &model_mod_check_nml
-   input_state_files     = 'init.nc'
-   output_state_files    = 'check_me.nc'
+   input_state_files     = 'x1.10242.init.nc'
+   output_state_files    = 'x1.10242.output.nc'
    test1thru             = 0
    run_tests             = 1,2,3,4,5,7
    x_ind                 = 300
    loc_of_interest       = 240.0, 0.0, 10000.0
-   quantity_of_interest  = 'QTY_U_WIND_COMPONENT'
-   interp_test_lonrange  = 0.0, 359.0
+   quantity_of_interest  = 'QTY_POTENTIAL_TEMPERATURE'
+   interp_test_lonrange  = 100.0, 120.0
    interp_test_dlon      = 1.0
-   interp_test_latrange  = -89.0, 89.0
+   interp_test_latrange  = 0.0, 40.0
    interp_test_dlat      = 1.0
-   interp_test_vertrange = 100.0,  20100.0
-   interp_test_dvert     = 2000.0
+   interp_test_vertrange = 1000.0,  10000.0
+   interp_test_dvert     = 100.0
    interp_test_vertcoord = 'VERTISHEIGHT'
    verbose               = .false.
   /
@@ -393,7 +418,7 @@
    interp_test_dlat      = 1.0
    interp_test_vertrange = 7000.0, 7000.0
    interp_test_dvert     = 1000.0
-   interp_test_vertcoord = 'VERTISHEIGHT'
+   interp_test_vertcoord = 'VERTISPRESSURE'
    hscale                = 100.0
    diff_threshold        = 2.0
    pointcount            = 100000
@@ -447,7 +472,7 @@
   /
 
 &mpas_dart_obs_preprocess_nml
-   file_name_input          = 'obs_seq.old'
+   file_name_input          = 'obs_seq.1obs'
    file_name_output         = 'obs_seq.new'
    include_sig_data         = .true.
    superob_aircraft         = .false.
@@ -476,6 +501,7 @@
    windowing_int_hour       = 0.5
 /
 
+<<<<<<< HEAD
 &obs_def_ctt_nml
    model_levels = .true.            ! if true, use model levels, ignores num_pres_int
    pressure_top = 500.0           ! top pressure in pascals
@@ -484,3 +510,71 @@
                                     ! true: sfc is separate from 3d grid
    /
 
+=======
+&obs_def_rttov_nml
+   rttov_sensor_db_file   = '../../../observations/forward_operators/rttov_sensor_db.csv'
+   first_lvl_is_sfc     = .true.   
+   mw_clear_sky_only    = .false.  
+   interp_mode          = 2        
+   do_checkinput        = .true.   
+   apply_reg_limits     = .true. 
+   verbose              = .true.   
+   fix_hgpl             = .true.   
+   do_lambertian        = .false. 
+   lambertian_fixed_angle = .true.
+   rad_down_lin_tau     = .true.   
+   max_zenith_angle     = 75.     
+   use_q2m              = .false.  
+   use_uv10m            = .false.  
+   use_wfetch           = .false.  
+   use_water_type       = .false.  
+   addrefrac            = .false.  
+   plane_parallel       = .false. 
+   use_salinity         = .false. 
+   cfrac_data           = .false. 
+   clw_data             = .false.  
+   rain_data            = .false.  
+   ciw_data             = .false. 
+   snow_data            = .false.  
+   graupel_data         = .false. 
+   hail_data            = .false.  
+   w_data               = .false.  
+   fastem_version       = 6        
+   supply_foam_fraction = .false.  
+   use_totalice         = .false.  
+   use_zeeman           = .false.  
+   ozone_data           = .false.  
+   co2_data             = .false.  
+   n2o_data             = .false.  
+   co_data              = .false. 
+   ch4_data             = .false. 
+   so2_data             = .false.  
+   addsolar             = .false.  
+   rayleigh_single_scatt = .true.  
+   do_nlte_correction   = .false.  
+   solar_sea_brdf_model = 2        
+   ir_sea_emis_model    = 2        
+   use_sfc_snow_frac    = .false.  
+   add_aerosl           = .false.  
+   aerosl_type          = 1        
+   add_clouds           = .false.   
+   ice_scheme           = 1       
+   use_icede            = .false. 
+   idg_scheme           = 2       
+   user_aer_opt_param   = .false.  
+   user_cld_opt_param   = .false.  
+   grid_box_avg_cloud   = .true.   
+   cloud_overlap        = 1        
+   ir_scatt_model       = 1        
+   vis_scatt_model      = 1        
+   dom_nstreams         = 8       
+   addpc                = .false.  
+   npcscores            = -1      
+   addradrec            = .false. 
+   ipcreg               = 1       
+   use_htfrtc           = .false.  
+   htfrtc_n_pc          = -1       
+   htfrtc_simple_cloud  = .false.  
+   htfrtc_overcast      = .false. 
+/
+>>>>>>> 7b2de5762a247a2c808bb5a23542e0dd2f8bc5f7

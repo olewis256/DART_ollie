@@ -204,6 +204,16 @@
 !   QTY_CLOUD_TOP_PRESSURE
 !   QTY_ABSOLUTE_HUMIDITY
 !
+<<<<<<< HEAD
+=======
+!
+! ! kinds for ADS-B refractivity
+!
+!   QTY_ADSB_HEIGHT
+!
+! ! kinds for CTT
+!
+>>>>>>> 7b2de5762a247a2c808bb5a23542e0dd2f8bc5f7
 !   QTY_CTT
 !
 ! END DART PREPROCESS QUANTITY DEFINITIONS

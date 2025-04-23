@@ -1,18 +1,21 @@
  obs_sequence
 obs_kind_definitions
            1
-           4 RADIOSONDE_TEMPERATURE          
-  num_copies:            1  num_qc:            0
-  num_obs:            1  max_num_obs:            1
-observation                                                     
-  first:            1  last:            1
+           330 LANDSAT_8_TIRS_TB
+  num_copies:            0  num_qc:            0
+  num_obs:        1  max_num_obs:        1
+  first:            1  last:        1
  OBS            1
-   280.000000000000     
-          -1          -1          -1
+          -1           -1          -1
 obdef
 loc3d
-     4.537856055185257        0.6981317007977318         70000.00000000000      2
+     0.0000        0.1277967696966680         0.00000000000      -2
 kind
-           4
-     0     148835
-   2.00000000000000     
+           330
+     visir
+   7.285474648218781        65.241998031733175       -888888.00000000000       -888888.00000000000     
+           35      9        66          1        2                
+  -888888.00000000000     
+           1
+     1000     0
+   1.50    

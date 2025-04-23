@@ -1,0 +1,80 @@
+netcdf ADSB_data {
+dimensions:
+	nstn = UNLIMITED ; // (1 currently)
+	ntime = 2 ;
+	strlength = 21 ;
+variables:
+	char sitenames(nstn, strlength) ;
+		sitenames:long_name = "ADS-B Interferometer Site Names" ;
+	double lon_receiver(nstn) ;
+		lon_receiver:long_name = "Longitude of receiver" ;
+		lon_receiver:units = "degrees" ;
+	double lat_receiver(nstn) ;
+		lat_receiver:long_name = "Latitude of receiver" ;
+		lat_receiver:units = "degrees" ;
+	double alt_receiver(nstn) ;
+		alt_receiver:long_name = "Altitude of receiver" ;
+		alt_receiver:units = "meters" ;
+	double azim(nstn, ntime) ;
+		azim:long_name = "azimuth of ray" ;
+		azim:units = "" ;
+	double aoa(nstn, ntime) ;
+		aoa:long_name = "AoA of ray" ;
+		aoa:units = "" ;
+	double aircraft_arc_ang(nstn, ntime) ;
+		aircraft_arc_ang:long_name = "Angle subtended between aircraft and receiver radial vectors" ;
+		aircraft_arc_ang:units = "radians" ;
+	double alt_air(nstn, ntime) ;
+		alt_air:long_name = "Altitude of aircraft" ;
+		alt_air:units = "meters" ;
+	double alt_err(nstn, ntime) ;
+		alt_err:long_name = "Altitude error of aircraft" ;
+		alt_err:units = "meters" ;
+	double lon_air(nstn, ntime) ;
+		lon_air:long_name = "Longitude of aircraft" ;
+		lon_air:units = "degrees" ;
+	double lat_air(nstn, ntime) ;
+		lat_air:long_name = "Latitude of aircraft" ;
+		lat_air:units = "degrees" ;
+	double time_offset(ntime) ;
+		time_offset:long_name = "Time offset from 00z" ;
+		time_offset:units = "seconds" ;
+	double roc(nstn) ;
+		roc:long_name = "Radius of curvature of Earth at receiver" ;
+		roc:units = "meters" ;
+
+
+// global attributes:
+    :start_date = "2012.146.00.15.00";
+    :start_time = "1021940100" ;
+
+
+data:
+
+ sitenames ="Clee_Hill" ;
+
+ lon_receiver = -110.00 ;
+
+ lat_receiver = 54.3984 ;
+
+ alt_receiver = 575.0000 ;
+
+ azim = 45.000, 45.000 ;
+
+ aoa = 0.017452, 0.017452;
+
+ aircraft_arc_ang = 0.0471, 0.0471;
+
+ alt_air = 12000.0, 12000.0;
+
+ alt_err = 0.1, 0.1;
+
+ lon_air = -98.000, -98.000;
+
+ lat_air = 56.000, 56.000;
+
+ time_offset = 0.0, 1.0;
+
+ roc = 6383571.0000 ;
+
+}
