@@ -8,7 +8,7 @@
 &perfect_model_obs_nml
    read_input_state_from_file = .true.
    single_file_in             = .false.
-   input_state_files          = 'init.nc'
+   input_state_files          = '/glade/derecho/scratch/olewis/data/member01/restart.2024-05-08_18.00.00.nc'
    init_time_days             = -1
    init_time_seconds          = -1
 
@@ -20,7 +20,7 @@
    async                      = 0
    adv_ens_command            = './advance_model.csh'
 
-   obs_seq_in_file_name       = 'obs_seq.in'
+   obs_seq_in_file_name       = 'obs_seq.1in'
    obs_seq_out_file_name      = 'obs_seq.out'
    first_obs_days             = -1
    first_obs_seconds          = -1
@@ -144,21 +144,8 @@
   /
 
 &obs_kind_nml
-   assimilate_these_obs_types = 'RADIOSONDE_TEMPERATURE',
-                                'RADIOSONDE_U_WIND_COMPONENT',
-                                'RADIOSONDE_V_WIND_COMPONENT',
-                                'RADIOSONDE_SPECIFIC_HUMIDITY',
-                                'GPSRO_REFRACTIVITY',
-                                'LAND_SFC_ALTIMETER',
-                                'MARINE_SFC_DEWPOINT',
-                                'AIRCRAFT_U_WIND_COMPONENT',
-                                'AIRCRAFT_V_WIND_COMPONENT',
-                                'AIRCRAFT_TEMPERATURE',
-                                'ACARS_U_WIND_COMPONENT',
-                                'ACARS_V_WIND_COMPONENT',
-                                'ACARS_TEMPERATURE',
-                                'SAT_U_WIND_COMPONENT',
-                                'SAT_V_WIND_COMPONENT',
+   assimilate_these_obs_types = 'CTT',
+                                
 
    evaluate_these_obs_types = ''
   /
@@ -169,7 +156,7 @@
 
 
 &model_nml
-   init_template_filename       = 'init.nc'
+   init_template_filename       = '/glade/derecho/scratch/olewis/data/member01/restart.2024-05-08_18.00.00.nc'
    assimilation_period_days     = 0
    assimilation_period_seconds  = 21600
    model_perturbation_amplitude = 0.0001
@@ -178,7 +165,7 @@
    highest_obs_pressure_mb      = 1.0
    sfc_elev_max_diff            = 100.
    log_p_vert_interp            = .false.
-   debug                        = 0
+   debug                        = 1
    use_u_for_wind               = .false.
    use_rbf_option               = 2
    update_u_from_reconstruct    = .true.
@@ -204,13 +191,21 @@
 !                          'q2',                    'QTY_2M_SPECIFIC_HUMIDITY',
 
 &mpas_vars_nml
-   mpas_state_variables = 'theta',                 'QTY_POTENTIAL_TEMPERATURE',
-                          'rho',                   'QTY_DENSITY',
-                          'uReconstructZonal',     'QTY_U_WIND_COMPONENT',
-                          'uReconstructMeridional','QTY_V_WIND_COMPONENT',
-                          'w',                     'QTY_VERTICAL_VELOCITY',
-                          'qv',                    'QTY_VAPOR_MIXING_RATIO',
-                          'surface_pressure',      'QTY_SURFACE_PRESSURE',
+   mpas_state_variables =  'theta',                'QTY_POTENTIAL_TEMPERATURE',
+                           'surface_pressure',      'QTY_SURFACE_PRESSURE',
+                           'uReconstructZonal',     'QTY_U_WIND_COMPONENT',
+                           'uReconstructMeridional','QTY_V_WIND_COMPONENT',
+                           'u',                     'QTY_EDGE_NORMAL_SPEED',
+                           'w',                     'QTY_VERTICAL_VELOCITY',
+                           'qv',                    'QTY_VAPOR_MIXING_RATIO',
+                           'qc',                    'QTY_CLOUDWATER_MIXING_RATIO',
+                           'qr',                    'QTY_RAINWATER_MIXING_RATIO',
+                           'rho',                   'QTY_DENSITY',
+                           'u10',                   'QTY_10M_U_WIND_COMPONENT',
+                           'v10',                   'QTY_10M_V_WIND_COMPONENT',
+                           't2m',                   'QTY_2M_TEMPERATURE',
+                           'q2',                    'QTY_2M_SPECIFIC_HUMIDITY',
+                           'skintemp',              'QTY_SKIN_TEMPERATURE',
    mpas_state_bounds    = 'qv','0.0','NULL','CLAMP',
   /
 
@@ -249,7 +244,8 @@
                              '../../../observations/forward_operators/obs_def_gps_mod.f90',
                              '../../../observations/forward_operators/obs_def_vortex_mod.f90', 
                              '../../../observations/forward_operators/obs_def_rel_humidity_mod.f90', 
-                             '../../../observations/forward_operators/obs_def_dew_point_mod.f90'
+                             '../../../observations/forward_operators/obs_def_dew_point_mod.f90',
+                             '../../../observations/forward_operators/obs_def_ctt_mod.f90'
    quantity_files          = '../../../assimilation_code/modules/observations/atmosphere_quantities_mod.f90'
   /
 
@@ -314,7 +310,7 @@
 
 
 &obs_seq_to_netcdf_nml
-   obs_sequence_name = 'obs_seq.final'
+   obs_sequence_name = 'obs_seq.out'
    obs_sequence_list = ''
    append_to_netcdf  = .false.
    lonlim1           =    0.0
@@ -479,4 +475,12 @@
    windowing_obs_time       = .true.
    windowing_int_hour       = 0.5
 /
+
+&obs_def_ctt_nml
+   model_levels = .true.            ! if true, use model levels, ignores num_pres_int
+   pressure_top = 500.0           ! top pressure in pascals
+   num_pressure_intervals = 40      ! num pressure intervals if model_levels = F
+   separate_surface_level = .true.  ! false: level 1 of 3d grid is sfc
+                                    ! true: sfc is separate from 3d grid
+   /
 
