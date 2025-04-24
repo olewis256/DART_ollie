@@ -92,7 +92,7 @@ integer :: max_pressure_intervals = 1000   ! increase as needed
 ! linear steps in pressure between the surface and top.
 
 logical  :: model_levels = .true.        ! if true, use model levels, ignores num_pres_int
-real(r8) :: pressure_top = 5000.0       ! top pressure in pascals
+real(r8) :: pressure_top = 500.0       ! top pressure in pascals
 logical  :: separate_surface_level = .true.  ! false: level 1 of 3d grid is sfc
                                              ! true: sfc is separate from 3d grid
 integer  :: num_pressure_intervals = 40  ! number of intervals if model_levels is F
@@ -141,7 +141,7 @@ subroutine get_expected_ctt(state_handle, ens_size, location, ctt, istatus)
 !    ctt:     cloud top temperature
 !    istatus: 0 if ok, a positive value for error
 !------------------------------------------------------------------------------
-!  Author: Ollie Lewis ,  Version 1.1: Apr 10, 2025 
+!  Author:  ,  Version 1.1: Apr 10, 2025 
 !  
 !------------------------------------------------------------------------------
 
@@ -234,14 +234,24 @@ if (model_levels) then
          location2 = set_location(lon, lat, real(k, r8),  which_vert)
 
          call interpolate(state_handle, ens_size, location2, QTY_PRESSURE, pressure, this_istatus)
-         call track_status(ens_size, this_istatus, pressure, istatus, return_now)
+         call track_status(ens_size, this_istatus, ctt, istatus, return_now)
          if (pressure(imem) < pressure_top) then
 
-            location2 = set_location(lon, lat, real(first_non_surface_level, r8),  which_vert)
-            call interpolate(state_handle, ens_size, location2, QTY_TEMPERATURE, t, this_istatus)
-            call track_status(ens_size, this_istatus, ctt, istatus, return_now)
+            if (qtot(imem) >= 1.0d-6) then
+               call interpolate(state_handle, ens_size, location2, QTY_TEMPERATURE, t, this_istatus)
+               call track_status(ens_size, this_istatus, ctt, istatus, return_now)
 
-            ctt(imem) = t(imem)
+               ctt(imem) = t(imem)
+
+            else
+
+               location2 = set_location(lon, lat, real(first_non_surface_level, r8),  which_vert)
+               call interpolate(state_handle, ens_size, location2, QTY_TEMPERATURE, t, this_istatus)
+               call track_status(ens_size, this_istatus, ctt, istatus, return_now)
+
+               ctt(imem) = t(imem)
+            
+            end if
 
             exit LEVELS
          end if
@@ -251,29 +261,24 @@ if (model_levels) then
 
          qtot_prev = qtot
 
-         call interpolate(state_handle, ens_size, location2, QTY_VAPOR_MIXING_RATIO, qv, this_istatus)
-         call track_status(ens_size, this_istatus, qv, istatus, return_now)
-
          call interpolate(state_handle, ens_size, location2, QTY_CLOUDWATER_MIXING_RATIO, qc, this_istatus)
-         call track_status(ens_size, this_istatus, qc, istatus, return_now)
+         call track_status(ens_size, this_istatus, ctt, istatus, return_now)
 
          call interpolate(state_handle, ens_size, location2, QTY_RAINWATER_MIXING_RATIO, qr, this_istatus)
-         call track_status(ens_size, this_istatus, qr, istatus, return_now)
+         call track_status(ens_size, this_istatus, ctt, istatus, return_now)
 
-!         call interpolate(state_handle, ens_size, location2, QTY_ICE_MIXING_RATIO, qi, this_istatus)
-!         call track_status(ens_size, this_istatus, qi, istatus, return_now)
+         call interpolate(state_handle, ens_size, location2, QTY_ICE_MIXING_RATIO, qi, this_istatus)
+         call track_status(ens_size, this_istatus, ctt, istatus, return_now)
 
-!         call interpolate(state_handle, ens_size, location2, QTY_GRAUPEL_MIXING_RATIO, qg, this_istatus)
-!         call track_status(ens_size, this_istatus, qg, istatus, return_now)
-
-
-         qtot = qv(imem) + qc(imem) + qr(imem)
+         call interpolate(state_handle, ens_size, location2, QTY_GRAUPEL_MIXING_RATIO, qg, this_istatus)
+         call track_status(ens_size, this_istatus, ctt, istatus, return_now)
 
 
+         qtot = qc(imem) + qr(imem) + qi(imem) + qg(imem)
 
          if (qtot(imem) < 1.0d-6 .and. qtot_prev(imem) >= 1.0d-6) then
             call interpolate(state_handle, ens_size, location2, QTY_TEMPERATURE, t, this_istatus)
-            call track_status(ens_size, this_istatus, t, istatus, return_now)
+            call track_status(ens_size, this_istatus, ctt, istatus, return_now)
 
             ctt(imem) = t(imem)
 
