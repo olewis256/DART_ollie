@@ -160,6 +160,7 @@ real(r8) :: psfc(ens_size)
 real(r8) :: t(ens_size)
 type(location_type) :: location2
 integer  :: which_vert, k, lastk, first_non_surface_level
+real(r8) :: interp_lev
 
 integer  :: iter
 integer  :: this_istatus(ens_size)
@@ -277,6 +278,9 @@ if (model_levels) then
          qtot = qc(imem) + qr(imem) + qi(imem) + qg(imem)
 
          if (qtot(imem) < 1.0d-6 .and. qtot_prev(imem) >= 1.0d-6) then
+
+            interp_lev = ( -1.0d-6 - (real(k, r8)*qtot_prev(imem) - real(k-1, r8)*qtot(imem)) ) / (qtot(imem) - qtot_prev(imem))
+            location2 = set_location(lon, lat, interp_lev,  which_vert)
             call interpolate(state_handle, ens_size, location2, QTY_TEMPERATURE, t, this_istatus)
             call track_status(ens_size, this_istatus, ctt, istatus, return_now)
 
