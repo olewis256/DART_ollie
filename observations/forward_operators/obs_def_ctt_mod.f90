@@ -26,22 +26,22 @@
 ! END DART PREPROCESS TYPE DEFINITIONS
 
 ! BEGIN DART PREPROCESS USE OF SPECIAL OBS_DEF MODULE
-!  use obs_def_ctt_mod,   only : get_expected_ctt
+!  use obs_def_ctt_mod,   only : get_expected_ctt, read_ctt_data, write_ctt_data
 ! END DART PREPROCESS USE OF SPECIAL OBS_DEF MODULE
 
 ! BEGIN DART PREPROCESS GET_EXPECTED_OBS_FROM_DEF
 !         case(CTT)
-!            call get_expected_ctt(state_handle, ens_size, location, expected_obs, istatus)
+!            call get_expected_ctt(state_handle, ens_size, location, obs_def%key, expected_obs, istatus)
 ! END DART PREPROCESS GET_EXPECTED_OBS_FROM_DEF
 
 ! BEGIN DART PREPROCESS READ_OBS_DEF
 !         case(CTT)
-!           continue
+!           call read_ctt_data(obs_def%key, ifile, fform)
 ! END DART PREPROCESS READ_OBS_DEF
 
 ! BEGIN DART PREPROCESS WRITE_OBS_DEF
 !         case(CTT)
-!           continue
+!           call write_ctt_data(obs_def%key, ifile, fform)
 ! END DART PREPROCESS WRITE_OBS_DEF
 
 ! BEGIN DART PREPROCESS INTERACTIVE_OBS_DEF
@@ -53,9 +53,10 @@
 module obs_def_ctt_mod
 
 use        types_mod, only : r8, missing_r8, RAD2DEG, DEG2RAD, PI
-use    utilities_mod, only : register_module, error_handler, E_ERR, E_MSG, &
-                             nmlfileunit, do_nml_file, do_nml_term, &
-                             check_namelist_read, find_namelist_in_file
+use    utilities_mod, only : register_module, error_handler, E_ERR, &
+                             nmlfileunit, check_namelist_read,      &
+                             find_namelist_in_file, do_nml_file, do_nml_term, &
+                             ascii_file_format
 use     location_mod, only : location_type, set_location, get_location, &
                              write_location, read_location, &
                              VERTISLEVEL, VERTISPRESSURE, VERTISSURFACE
@@ -72,7 +73,7 @@ use obs_def_utilities_mod, only : track_status
 implicit none
 private
 
-public ::  get_expected_ctt
+public ::  get_expected_ctt, write_ctt_data, read_ctt_data
 
 ! version controlled file description for error handling, do not edit
 character(len=256), parameter :: source   = &
@@ -96,25 +97,30 @@ real(r8) :: pressure_top = 500.0       ! top pressure in pascals
 logical  :: separate_surface_level = .true.  ! false: level 1 of 3d grid is sfc
                                              ! true: sfc is separate from 3d grid
 integer  :: num_pressure_intervals = 40  ! number of intervals if model_levels is F
-
+integer  :: keycount 
 
 namelist /obs_def_ctt_nml/ model_levels, pressure_top,  &
                            separate_surface_level, num_pressure_intervals
 
+type ctt_type
+   private
+   integer            :: cmask
+end type ctt_type
+
+type(ctt_type), allocatable :: ctt_data(:)
+
 contains
 
 !------------------------------------------------------------------------------
-subroutine initialize_module()
+subroutine initialize_module
 
-! should be called once by the other routines in this file to be sure
-! the namelist has been read and any initialization code is run.
-
-integer :: iunit, rc
-
-if (module_initialized) return
+integer :: rc, iunit
 
 call register_module(source, revision, revdate)
 module_initialized = .true.
+
+! global count of all gps observations from any input file
+keycount = 0
 
 ! Read the namelist entry
 call find_namelist_in_file("input.nml", "obs_def_ctt_nml", iunit)
@@ -127,9 +133,89 @@ if (do_nml_term()) write(     *     , nml=obs_def_ctt_nml)
 
 end subroutine initialize_module
 
+!------------------------------------------------------------------------------
+subroutine set_ctt_data(key, cloud_mask)
+
+integer,          intent(out) :: key
+integer,          intent(in)  :: cloud_mask
+
+if ( .not. module_initialized ) call initialize_module
+
+keycount = keycount + 1
+key = keycount
+
+ctt_data(key)%cmask = cloud_mask
+
+end subroutine set_ctt_data
 
 !------------------------------------------------------------------------------
-subroutine get_expected_ctt(state_handle, ens_size, location, ctt, istatus)
+subroutine get_ctt_data(key, cloud_mask)
+
+integer,          intent(in)  :: key
+integer,          intent(out) :: cloud_mask
+
+if ( .not. module_initialized ) call initialize_module
+
+cloud_mask = ctt_data(key)%cmask
+ 
+end subroutine get_ctt_data
+
+
+!------------------------------------------------------------------------------
+subroutine write_ctt_data(key, ifile, fform)
+
+integer,          intent(in)           :: key, ifile
+character(len=*), intent(in), optional :: fform
+
+
+if ( .not. module_initialized ) call initialize_module
+
+! Write the 5 character identifier for verbose formatted output
+! Write out the obs_def key for this observation
+if (ascii_file_format(fform)) then
+   write(ifile,11) key
+   write(ifile, *) ctt_data(key)%cmask
+                  
+11  format('cloud_mask', i8)
+else
+   write(ifile) key
+   write(ifile, *) ctt_data(key)%cmask
+endif
+
+end subroutine write_ctt_data
+
+!------------------------------------------------------------------------------
+subroutine read_ctt_data(key, ifile, fform)
+
+integer,          intent(out)          :: key
+integer,          intent(in)           :: ifile
+character(len=*), intent(in), optional :: fform
+
+integer :: keyin    ! the metadata key in the current obs sequence
+
+integer :: cloud_mask
+character(len=8) :: header
+
+if (ascii_file_format(fform)) then
+   read(ifile, FMT='(a8, i8)') header, keyin    ! throw away keyin
+   if(header /= 'cloud') then
+       call error_handler(E_ERR,'read_cloud_data', &
+       'Expected header "cloud" in input file', source, revision, revdate)
+   endif
+   read(ifile, *) cloud_mask
+else
+   read(ifile) keyin          ! read and throw away
+   read(ifile) cloud_mask
+endif
+
+
+! increment key and set all private data for this observation
+call set_ctt_data(key, cloud_mask)
+
+end subroutine read_ctt_data
+
+!------------------------------------------------------------------------------
+subroutine get_expected_ctt(state_handle, ens_size, location, key, ctt, istatus)
 
 !------------------------------------------------------------------------------
 ! Purpose:  To calculate the cloud top temperature at a particular location.
@@ -148,6 +234,7 @@ subroutine get_expected_ctt(state_handle, ens_size, location, ctt, istatus)
 type(ensemble_type), intent(in)  :: state_handle
 integer,             intent(in)  :: ens_size
 type(location_type), intent(in)  :: location
+integer,             intent(in)  :: key
 real(r8),            intent(out) :: ctt(ens_size)
 integer,             intent(out) :: istatus(ens_size)
 
@@ -279,7 +366,7 @@ if (model_levels) then
 
          if (qtot(imem) < 1.0d-6 .and. qtot_prev(imem) >= 1.0d-6) then
 
-            interp_lev = ( -1.0d-6 - (real(k, r8)*qtot_prev(imem) - real(k-1, r8)*qtot(imem)) ) / (qtot(imem) - qtot_prev(imem))
+            interp_lev = ( 1.0d-6 - (real(k, r8)*qtot_prev(imem) - real(k-1, r8)*qtot(imem)) ) / (qtot(imem) - qtot_prev(imem))
             location2 = set_location(lon, lat, interp_lev,  which_vert)
             call interpolate(state_handle, ens_size, location2, QTY_TEMPERATURE, t, this_istatus)
             call track_status(ens_size, this_istatus, ctt, istatus, return_now)
