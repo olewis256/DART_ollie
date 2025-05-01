@@ -66,7 +66,7 @@ use  assim_model_mod, only : interpolate
 use     obs_kind_mod, only : QTY_SURFACE_PRESSURE, QTY_VAPOR_MIXING_RATIO, &
                              QTY_CLOUDWATER_MIXING_RATIO, QTY_RAINWATER_MIXING_RATIO, &
                              QTY_ICE_MIXING_RATIO, QTY_GRAUPEL_MIXING_RATIO, &
-                             QTY_TEMPERATURE, QTY_PRESSURE  
+                             QTY_TEMPERATURE, QTY_PRESSURE, QTY_2M_TEMPERATURE  
 use ensemble_manager_mod,  only : ensemble_type
 use obs_def_utilities_mod, only : track_status
 
@@ -98,6 +98,9 @@ logical  :: separate_surface_level = .true.  ! false: level 1 of 3d grid is sfc
                                              ! true: sfc is separate from 3d grid
 integer  :: num_pressure_intervals = 40  ! number of intervals if model_levels is F
 integer  :: keycount 
+integer  :: max_ctt_obs = 100000
+
+character(len=129) :: string1, string2
 
 namelist /obs_def_ctt_nml/ model_levels, pressure_top,  &
                            separate_surface_level, num_pressure_intervals
@@ -130,6 +133,14 @@ call check_namelist_read(iunit, rc, "obs_def_ctt_nml")
 ! Record the namelist values used for the run ...
 if (do_nml_file()) write(nmlfileunit, nml=obs_def_ctt_nml)
 if (do_nml_term()) write(     *     , nml=obs_def_ctt_nml)
+
+allocate(ctt_data(max_ctt_obs), stat = rc)
+if (rc /= 0) then
+   write(string1, *) 'initial allocation failed for ctt observation data,', &
+                       'itemcount = ', max_ctt_obs
+   call error_handler(E_ERR,'initialize_module', string1, &
+                      source, revision, revdate)
+endif
 
 end subroutine initialize_module
 
@@ -176,7 +187,7 @@ if (ascii_file_format(fform)) then
    write(ifile,11) key
    write(ifile, *) ctt_data(key)%cmask
                   
-11  format('cloud_mask', i8)
+11  format('cloud', i8)
 else
    write(ifile) key
    write(ifile, *) ctt_data(key)%cmask
@@ -264,7 +275,7 @@ obsloc   = get_location(location)
 lon      = obsloc(1)                       ! degree: 0 to 360
 lat      = obsloc(2)                       ! degree: -90 to 90
 
-qtot = 0.0_r8
+qtot = 1.0_r8
 
 which_vert = VERTISSURFACE
 height = 0.0
@@ -312,7 +323,16 @@ if (model_levels) then
 
    do imem = 1, ens_size
 
-      LEVELS: do k=first_non_surface_level, 10000   ! something unreasonably large
+      which_vert = VERTISSURFACE
+      height = 0.0
+      location2 = set_location(lon, lat, height,  which_vert)
+
+      call interpolate(state_handle, ens_size, location2, QTY_2M_TEMPERATURE, t, this_istatus)
+      call track_status(ens_size, this_istatus, ctt, istatus, return_now)
+
+      ctt(imem) = t(imem)
+
+      LEVELS: do k=50, first_non_surface_level, -1   ! something unreasonably large
       
          ! call the model_mod to get the pressure and specific humidity at each level 
          ! from the model and fill out the pressure and qv arrays.  the model must
@@ -320,30 +340,9 @@ if (model_levels) then
 
          which_vert = VERTISLEVEL
          location2 = set_location(lon, lat, real(k, r8),  which_vert)
-
+         write(*,*) k 
          call interpolate(state_handle, ens_size, location2, QTY_PRESSURE, pressure, this_istatus)
          call track_status(ens_size, this_istatus, ctt, istatus, return_now)
-         if (pressure(imem) < pressure_top) then
-
-            if (qtot(imem) >= 1.0d-6) then
-               call interpolate(state_handle, ens_size, location2, QTY_TEMPERATURE, t, this_istatus)
-               call track_status(ens_size, this_istatus, ctt, istatus, return_now)
-
-               ctt(imem) = t(imem)
-
-            else
-
-               location2 = set_location(lon, lat, real(first_non_surface_level, r8),  which_vert)
-               call interpolate(state_handle, ens_size, location2, QTY_TEMPERATURE, t, this_istatus)
-               call track_status(ens_size, this_istatus, ctt, istatus, return_now)
-
-               ctt(imem) = t(imem)
-            
-            end if
-
-            exit LEVELS
-         end if
-         if (return_now) return
 
          ! Computing mixing ratios to compute total mixing ratio for threshold calculation
 
@@ -364,15 +363,15 @@ if (model_levels) then
 
          qtot = qc(imem) + qr(imem) + qi(imem) + qg(imem)
 
-         if (qtot(imem) < 1.0d-6 .and. qtot_prev(imem) >= 1.0d-6) then
+         if (qtot(imem) > 1.0d-6 .and. qtot_prev(imem) < 1.0d-6) then
 
-            interp_lev = ( 1.0d-6 - (real(k, r8)*qtot_prev(imem) - real(k-1, r8)*qtot(imem)) ) / (qtot(imem) - qtot_prev(imem))
-            location2 = set_location(lon, lat, interp_lev,  which_vert)
+!           interp_lev = ( 1.0d-6 - (real(k, r8)*qtot_prev(imem) - real(k-1, r8)*qtot(imem)) ) / (qtot(imem) - qtot_prev(imem))
+!           location2 = set_location(lon, lat, interp_lev,  which_vert)
             call interpolate(state_handle, ens_size, location2, QTY_TEMPERATURE, t, this_istatus)
             call track_status(ens_size, this_istatus, ctt, istatus, return_now)
 
             ctt(imem) = t(imem)
-
+            write(*,*) "HELLO", qtot, qtot_prev, pressure(imem)
             exit LEVELS
 
          end if
