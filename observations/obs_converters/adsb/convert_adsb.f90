@@ -8,12 +8,7 @@ program convert_adsb
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-!   convert_gpspw - program that reads ground-based GPS 
-!                   precipitable water from Suominet sites
-!                   in netCDF and writes a DART
-!                   obs_seq file using the DART library routines.
-!
-!     created Nov. 2014 Soyoung Ha, NCAR/MMM
+!   
 !
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
