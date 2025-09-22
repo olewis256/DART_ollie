@@ -68,12 +68,15 @@ use     obs_kind_mod, only : ACARS_DEWPOINT, ACARS_RELATIVE_HUMIDITY, ACARS_SPEC
                              METAR_V_10_METER_WIND, PROFILER_U_WIND_COMPONENT, PROFILER_V_WIND_COMPONENT, &
                              RADIOSONDE_DEWPOINT, RADIOSONDE_RELATIVE_HUMIDITY, RADIOSONDE_SPECIFIC_HUMIDITY, &
                              RADIOSONDE_SURFACE_ALTIMETER, RADIOSONDE_TEMPERATURE, RADIOSONDE_U_WIND_COMPONENT, &
-                             RADIOSONDE_V_WIND_COMPONENT, SAT_U_WIND_COMPONENT, SAT_V_WIND_COMPONENT
+                             RADIOSONDE_V_WIND_COMPONENT, SAT_U_WIND_COMPONENT, SAT_V_WIND_COMPONENT, &
+                             DOPPLER_RADIAL_VELOCITY, RADAR_REFLECTIVITY, RADAR_CLEARAIR_REFLECTIVITY, &
+                             GOES_LWP_PATH, GOES_IWP_PATH, GOES_CWP_ZERO, HYDROSAT_TB
 use        model_mod, only : static_init_model, get_grid_dims, get_xland, &
                              model_interpolate, find_closest_cell_center, &
                              cell_ok_to_interpolate, is_global_grid,      &
                              get_bdy_mask, get_cell_center_coords
 use ensemble_manager_mod, only : ensemble_type, init_ensemble_manager, end_ensemble_manager
+
 use           netcdf
 
 implicit none
@@ -99,13 +102,15 @@ character(len=129) :: file_name_input    = 'obs_seq.old',        &
                       profiler_extra     = 'obs_seq.profiler',   &
                       gpsro_extra        = 'obs_seq.gpsro',      &
                       gpspw_extra        = 'obs_seq.gpspw',      &
-                      trop_cyclone_extra = 'obs_seq.tc'
+                      trop_cyclone_extra = 'obs_seq.tc',         &
+                      hydrosat_extra     = 'obs_seq.hydrosat'    
 integer            :: max_num_obs              = 1000000  ! Largest number of obs in one sequence
 
 !  parameters to deal with obs near boundary if regional grid
 logical            :: increase_bdy_error       = .false.  ! true to increase obs error near boundary
 real(r8)           :: maxobsfac                = 2.5_r8   ! maximum increase in obs error near boundary
 real(r8)           :: obsdistbdy               = 150000.0_r8  ! within X meters of boundary will have err changed
+real(r8)           :: obs_boundary             = 0.0_r8   ! within X meters of boundary to remove observations
 
 !  parameters used to reduce observations
 logical            :: sfc_elevation_check      = .false.    ! remove obs where model-obs topography is large
@@ -138,6 +143,10 @@ logical            :: overwrite_obs_time       = .false.  ! true to overwrite al
 logical            :: windowing_obs_time       = .false.  ! true to remove obs beyond the time window
 real(r8)           :: windowing_int_hour       = 1.5_r8   ! time window [hr] centered on the analysis time
 
+! thin Hydrosat data
+logical            :: thin_hydrosat            = .false.  ! true to thin hydrosat data
+real(r8)           :: thresh_dist              = 500.0_r8 ! maximum distance from cell centre
+
 !  debug
 integer            :: print_every_nth_obs      = -1       ! if positive, print a reassuring message as you loop
                                                           ! over the list of obs
@@ -150,7 +159,7 @@ namelist /mpas_dart_obs_preprocess_nml/ file_name_input, file_name_output, max_n
          acars_extra, land_sfc_extra, marine_sfc_extra, sat_wind_extra, profiler_extra, &
          trop_cyclone_extra, gpsro_extra, gpspw_extra, tc_sonde_radii, overwrite_obs_time, &
          increase_bdy_error, maxobsfac, obsdistbdy, windowing_obs_time, windowing_int_hour, &
-         print_every_nth_obs
+         thin_hydrosat, thresh_dist, print_every_nth_obs, obs_boundary
 
 !----------------------------------------------------------------------
 ! Declare other variables
@@ -165,7 +174,8 @@ integer                 :: io, iunit, fid, var_id, obs_seq_file_id, num_copies, 
 logical                 :: file_exist, pre_I_format
 
 type(obs_sequence_type) :: seq_all, seq_rawin, seq_sfc, seq_acars, seq_satwnd, &
-                           seq_prof, seq_tc, seq_gpsro, seq_other, seq_gpspw, seq_air
+                           seq_prof, seq_tc, seq_gpsro, seq_other, seq_gpspw, seq_air, &
+                           seq_hydrosat                               
 
 type(time_type)         :: anal_time
 
@@ -232,22 +242,23 @@ call create_new_obs_seq(num_copies, num_qc, max_obs_seq, seq_gpsro)
 call create_new_obs_seq(num_copies, num_qc, 100,         seq_tc)
 call create_new_obs_seq(num_copies, num_qc, max_obs_seq, seq_other)
 call create_new_obs_seq(num_copies, num_qc, max_obs_seq, seq_gpspw)
+call create_new_obs_seq(num_copies, num_qc, max_obs_seq, seq_hydrosat)
 
 print *, 'calling read_and_parse_input_seq'
 
 !  read input obs_seq file, divide into platforms
-call read_and_parse_input_seq(file_name_input, xland, obsdistbdy,        &
+call read_and_parse_input_seq(file_name_input, xland, obs_boundary,      &
 include_sig_data, obs_pressure_top, obs_height_top, sfc_elevation_check, &
 sfc_elevation_tol, overwrite_ncep_sfc_qc, overwrite_ncep_satwnd_qc,      &
 overwrite_obs_time, anal_time, windowing_obs_time, windowing_int_hour,   &
 seq_rawin, seq_sfc, seq_acars, seq_air, seq_satwnd, seq_tc, seq_gpsro,   &
-seq_gpspw, seq_other)
+seq_gpspw, seq_hydrosat, seq_other)
 
 !print *, 'calling add supplimental obs 1 of 10'
 
 !  add supplimental rawinsonde observations from file
 call add_supplimental_obs(sonde_extra, seq_rawin, max_obs_seq, &
-RADIOSONDE_U_WIND_COMPONENT, include_sig_data, &
+RADIOSONDE_U_WIND_COMPONENT, obs_boundary, include_sig_data, &
 obs_pressure_top, obs_height_top, gpsro_lowest_meter, sfc_elevation_check, sfc_elevation_tol, &
 overwrite_obs_time, anal_time, windowing_obs_time, windowing_int_hour)
 
@@ -255,7 +266,7 @@ overwrite_obs_time, anal_time, windowing_obs_time, windowing_int_hour)
 
 !  add supplimental ACARS observations from file
 call add_supplimental_obs(acars_extra, seq_acars, max_obs_seq, &
-ACARS_U_WIND_COMPONENT, include_sig_data, &
+ACARS_U_WIND_COMPONENT, obs_boundary, include_sig_data, &
 obs_pressure_top, obs_height_top, gpsro_lowest_meter, sfc_elevation_check, sfc_elevation_tol, &
 overwrite_obs_time, anal_time, windowing_obs_time, windowing_int_hour)
 
@@ -263,7 +274,7 @@ overwrite_obs_time, anal_time, windowing_obs_time, windowing_int_hour)
 
 !  add supplimental marine observations from file
 call add_supplimental_obs(marine_sfc_extra, seq_sfc, max_obs_seq, &
-MARINE_SFC_U_WIND_COMPONENT, include_sig_data, &
+MARINE_SFC_U_WIND_COMPONENT, obs_boundary, include_sig_data, &
 obs_pressure_top, obs_height_top, gpsro_lowest_meter, sfc_elevation_check, sfc_elevation_tol, &
 overwrite_obs_time, anal_time, windowing_obs_time, windowing_int_hour)
 
@@ -271,7 +282,7 @@ overwrite_obs_time, anal_time, windowing_obs_time, windowing_int_hour)
 
 !  add supplimental land surface observations from file
 call add_supplimental_obs(land_sfc_extra, seq_sfc, max_obs_seq, &
-LAND_SFC_U_WIND_COMPONENT, include_sig_data, &
+LAND_SFC_U_WIND_COMPONENT, obs_boundary, include_sig_data, &
 obs_pressure_top, obs_height_top, gpsro_lowest_meter, sfc_elevation_check, sfc_elevation_tol, &
 overwrite_obs_time, anal_time, windowing_obs_time, windowing_int_hour)
 
@@ -279,7 +290,7 @@ overwrite_obs_time, anal_time, windowing_obs_time, windowing_int_hour)
 
 !  add supplimental metar observations from file
 call add_supplimental_obs(metar_extra, seq_sfc, max_obs_seq, &
-METAR_U_10_METER_WIND, include_sig_data, &
+METAR_U_10_METER_WIND, obs_boundary, include_sig_data, &
 obs_pressure_top, obs_height_top, gpsro_lowest_meter, sfc_elevation_check, sfc_elevation_tol, &
 overwrite_obs_time, anal_time, windowing_obs_time, windowing_int_hour)
 
@@ -287,7 +298,7 @@ overwrite_obs_time, anal_time, windowing_obs_time, windowing_int_hour)
 
 !  add supplimental satellite wind observations from file
 call add_supplimental_obs(sat_wind_extra, seq_satwnd, max_obs_seq, &
-SAT_U_WIND_COMPONENT, include_sig_data, &
+SAT_U_WIND_COMPONENT, obs_boundary, include_sig_data, &
 obs_pressure_top, obs_height_top, gpsro_lowest_meter, sfc_elevation_check, sfc_elevation_tol, &
 overwrite_obs_time, anal_time, windowing_obs_time, windowing_int_hour)
 
@@ -295,7 +306,7 @@ overwrite_obs_time, anal_time, windowing_obs_time, windowing_int_hour)
 
 !  add supplimental profiler observations from file
 call add_supplimental_obs(profiler_extra, seq_prof, max_obs_seq, &
-PROFILER_U_WIND_COMPONENT, include_sig_data, &
+PROFILER_U_WIND_COMPONENT, obs_boundary, include_sig_data, &
 obs_pressure_top, obs_height_top, gpsro_lowest_meter, sfc_elevation_check, sfc_elevation_tol, &
 overwrite_obs_time, anal_time, windowing_obs_time, windowing_int_hour)
 
@@ -303,7 +314,13 @@ overwrite_obs_time, anal_time, windowing_obs_time, windowing_int_hour)
 
 !  add supplimental GPSRO observations from file
 call add_supplimental_obs(gpsro_extra, seq_gpsro, max_obs_seq, &
-GPSRO_REFRACTIVITY, include_sig_data, &
+GPSRO_REFRACTIVITY, obs_boundary, include_sig_data, &
+obs_pressure_top, obs_height_top, gpsro_lowest_meter, sfc_elevation_check, sfc_elevation_tol, &
+overwrite_obs_time, anal_time, windowing_obs_time, windowing_int_hour)
+
+!  add supplimental Hydrosat observations from file
+call add_supplimental_obs(hydrosat_extra, seq_hydrosat, max_obs_seq, &
+HYDROSAT_TB, obs_boundary, include_sig_data, &
 obs_pressure_top, obs_height_top, gpsro_lowest_meter, sfc_elevation_check, sfc_elevation_tol, &
 overwrite_obs_time, anal_time, windowing_obs_time, windowing_int_hour)
 
@@ -311,7 +328,7 @@ overwrite_obs_time, anal_time, windowing_obs_time, windowing_int_hour)
 
 !  add supplimental GPSPW observations from file
 call add_supplimental_obs(gpspw_extra, seq_gpspw, max_obs_seq, &
-GPS_PRECIPITABLE_WATER, include_sig_data, &
+GPS_PRECIPITABLE_WATER, obs_boundary, include_sig_data, &
 obs_pressure_top, obs_height_top, gpsro_lowest_meter, sfc_elevation_check, sfc_elevation_tol, &
 overwrite_obs_time, anal_time, windowing_obs_time, windowing_int_hour)
 
@@ -319,7 +336,7 @@ overwrite_obs_time, anal_time, windowing_obs_time, windowing_int_hour)
 
 !  add supplimental tropical cyclone vortex observations from file
 !call add_supplimental_obs(trop_cyclone_extra, seq_tc, max_obs_seq, &
-!VORTEX_LAT, include_sig_data, &
+!VORTEX_LAT, obs_boundary, include_sig_data, &
 !obs_pressure_top, obs_height_top, gpsro_lowest_meter, sfc_elevation_check, sfc_elevation_tol, &
 !overwrite_obs_time, anal_time, windowing_obs_time, windowing_int_hour)
 
@@ -340,23 +357,28 @@ endif
 if ( superob_sat_winds ) call superob_sat_wind_data(seq_satwnd, nCells, anal_time, &
                               sat_wind_pres_int, superob_qc_threshold, obs_pressure_top)
 
+! thin Hydrosat data
+if ( thin_hydrosat ) call thin_hydrosat_data(seq_hydrosat, nCells, thresh_dist, anal_time)
+
 print*, 'Number of obs processed:'
-print*, 'num_rawin:  ', get_num_obs(seq_rawin)
-print*, 'num_sfc:    ', get_num_obs(seq_sfc)
-print*, 'num_acars:  ', get_num_obs(seq_acars)
-print*, 'num_airs:   ', get_num_obs(seq_air)
-print*, 'num_satwnd: ', get_num_obs(seq_satwnd)
-print*, 'num_prof:   ', get_num_obs(seq_prof)
-print*, 'num_gpsro:  ', get_num_obs(seq_gpsro)
-print*, 'num_gpspw:  ', get_num_obs(seq_gpspw)
-print*, 'num_tc:     ', get_num_obs(seq_tc)
-print*, 'num_other:  ', get_num_obs(seq_other)
+print*, 'num_rawin:  ',  get_num_obs(seq_rawin)
+print*, 'num_sfc:    ',  get_num_obs(seq_sfc)
+print*, 'num_acars:  ',  get_num_obs(seq_acars)
+print*, 'num_airs:   ',  get_num_obs(seq_air)
+print*, 'num_satwnd: ',  get_num_obs(seq_satwnd)
+print*, 'num_prof:   ',  get_num_obs(seq_prof)
+print*, 'num_gpsro:  ',  get_num_obs(seq_gpsro)
+print*, 'num_gpspw:  ',  get_num_obs(seq_gpspw)
+print*, 'num_tc:     ',  get_num_obs(seq_tc)
+print*, 'num_hydrosat:', get_num_obs(seq_hydrosat)
+print*, 'num_other:  ',  get_num_obs(seq_other)
 
 max_obs_seq = get_num_obs(seq_tc)     + get_num_obs(seq_rawin) + &
               get_num_obs(seq_sfc)    + get_num_obs(seq_acars) + &
               get_num_obs(seq_satwnd) + get_num_obs(seq_prof)  + &
               get_num_obs(seq_gpsro)  + get_num_obs(seq_gpspw) + &
-              get_num_obs(seq_other)  + get_num_obs(seq_air)
+              get_num_obs(seq_other)  + get_num_obs(seq_air)   + &
+              get_num_obs(seq_hydrosat)
 print*, 'num_total:  ', max_obs_seq
 
 call create_new_obs_seq(num_copies, num_qc, max_obs_seq, seq_all)
@@ -387,6 +409,9 @@ call destroy_obs_sequence(seq_satwnd)
 
 call build_master_sequence(seq_prof, seq_all)
 call destroy_obs_sequence(seq_prof)
+
+call build_master_sequence(seq_hydrosat, seq_all)
+call destroy_obs_sequence(seq_hydrosat)
 
 call build_master_sequence(seq_other, seq_all)
 call destroy_obs_sequence(seq_other)
@@ -451,6 +476,9 @@ end function acars_obs_check
 !    obs_seq     - platform-specific obs sequence
 !    max_obs_seq - maximum number of observations in sequence
 !    plat_kind   - integer kind of platform (used for print statements)
+!    obs_bdy_dist - within this distance from the nearest bounary cell to remove observations.
+!                   This value is supposed to be smaller than obsbdydist [both in meters].
+!                   Observations located between obs_bdy_dist and obsbdydist will get the error increased.
 !    siglevel    - true to include sonde significant level data
 !    ptop        - lowest pressure to include in sequence
 !    htop        - highest height level to include in sequence
@@ -462,7 +490,7 @@ end function acars_obs_check
 !    window_hours - hours for time window, obs more than +/- away discarded
 !
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-subroutine add_supplimental_obs(filename, obs_seq, max_obs_seq, plat_kind, &
+subroutine add_supplimental_obs(filename, obs_seq, max_obs_seq, plat_kind, obs_bdy_dist, &
                                  siglevel, ptop, htop, hbot, sfcelev, elev_max,  &
                                  overwrite_time, atime, obs_window, window_hours)
 
@@ -474,11 +502,12 @@ real(r8),                intent(in)    :: ptop, htop, hbot, elev_max
 type(time_type),         intent(in)    :: atime
 logical,                 intent(in)    :: obs_window
 real(r8),                intent(in)    :: window_hours
+real(r8),                intent(in)    :: obs_bdy_dist
 
-integer  :: nloc, okind
+integer  :: nloc, okind, rbdy, num_outside, cellid
 integer  :: gsec, gday, dsec, bday, bsec, eday, esec, num_excluded_bytime
 logical  :: file_exist, last_obs, pass_checks, first_obs
-real(r8) :: llv_loc(3)
+real(r8) :: llv_loc(3), mindistbdy
 
 type(location_type)     :: obs_loc_list(max_obs_seq), obs_loc
 type(obs_def_type)      :: obs_def
@@ -486,6 +515,8 @@ type(obs_sequence_type) :: supp_obs_seq
 type(obs_type)          :: obs_in, prev_obsi, prev_obso, obs
 type(time_type)         :: obs_time, prev_time
 type(time_type)         :: window_min, window_max
+type(get_close_type)    :: rgc
+type(location_type), allocatable  :: rbdyloclist(:)
 
 inquire(file = trim(adjustl(filename)), exist = file_exist)
 if ( .not. file_exist )  return
@@ -547,12 +578,29 @@ if ( obs_window ) then
   num_excluded_bytime    = 0   ! total number of obs beyond the time window
 end if
 
+! count, allocate, and fill a location list
+call gather_bdy_cells(rbdy, rbdyloclist)
+if (rbdy > 0 .and. obs_bdy_dist > 0.0_r8) &
+call get_close_init(rgc, rbdy, obs_bdy_dist/radius_meters, rbdyloclist)
+num_outside = 0   ! total number of observations outside the domain
+
 ObsLoop:  do while ( .not. last_obs ) ! loop over all observations in a sequence
 
   !  read data from observation
   call get_obs_def(obs_in, obs_def)
   okind   = get_obs_def_type_of_obs(obs_def)
   obs_loc = get_obs_def_location(obs_def)
+
+  cellid = cell_ok_to_interpolate(obs_loc)
+  if (cellid < 1) then ! exclude obs outside region and bdy cells
+
+    num_outside = num_outside + 1   ! number of observations outside the domain
+    prev_obsi = obs_in
+    call get_next_obs(supp_obs_seq, prev_obsi, obs_in, last_obs)
+    cycle ObsLoop
+
+  end if
+
   llv_loc = get_location(obs_loc)
   obs_time = get_obs_def_time(obs_def)
 
@@ -585,6 +633,24 @@ ObsLoop:  do while ( .not. last_obs ) ! loop over all observations in a sequence
 
     end if
   end if
+
+  !!!!!!!!!!!!!!!!!!!!!!!!!
+  ! remove the observation if it is located within obs_bdy_dist [meters] from any boundary cell
+  !!!!!!!!!!!!!!!!!!!!!!!!!
+  ! compute min dist to any boundary cell in meters
+  if (rbdy > 0 .and. obs_bdy_dist > 0.0_r8) then 
+     call find_min_dist(rgc, obs_loc, rbdy, rbdyloclist, mindistbdy)
+
+     if ( mindistbdy <= obs_bdy_dist ) then
+
+          prev_obsi = obs_in
+          call get_next_obs(supp_obs_seq, prev_obsi, obs_in, last_obs)
+          num_outside = num_outside + 1
+          cycle ObsLoop
+   
+     end if
+   endif
+  !!!!!!!!!!!!!!!!!!!!!!!!!
 
   ! perform platform-specific checks
   select case (plat_kind)
@@ -645,6 +711,11 @@ call destroy_obs_sequence(supp_obs_seq)
 
 if ( obs_window ) &
 print*, 'Number of obs outside the time window in this supplimental_obs:',num_excluded_bytime
+
+deallocate(rbdyloclist)
+if (rbdy > 0 .and. obs_bdy_dist > 0.0_r8) call get_close_destroy(rgc)
+if (num_outside > 0) &
+print*, 'Number of rejected obs outside or close to boundaries (obs_boundary) in the supplimental_obs:',num_outside
 
 end subroutine add_supplimental_obs
 
@@ -987,16 +1058,20 @@ real(r8), parameter :: new_qc_value =  2.0_r8
 
 character(len=129)    :: qcmeta
 integer               :: fid, var_id, okind, cellid, dsec, nobs, nth_obs
-integer               :: bsec, bday, esec, eday, num_excluded_bytime
+integer               :: bsec, bday, esec, eday, num_excluded_bytime, num_outside
 logical               :: file_exist, last_obs, input_ncep_qc, global
 real(r8), allocatable :: qc(:)
-real(r8)              :: llv_loc(3)
+real(r8)              :: llv_loc(3), mindistbdy
 
 type(location_type)     :: obs_loc
 type(obs_def_type)      :: obs_def
 type(obs_sequence_type) :: seq
 type(obs_type)          :: obs, obs_in, prev_obs
 type(time_type)         :: window_min, window_max, obs_time
+
+integer                 :: rbdy
+type(get_close_type)    :: rgc
+type(location_type), allocatable  :: rbdyloclist(:)
 
 inquire(file = trim(adjustl(filename)), exist = file_exist)
 if ( .not. file_exist )  return
@@ -1033,12 +1108,19 @@ end if
 
 nobs = 0
 
+! count, allocate, and fill a location list
+call gather_bdy_cells(rbdy, rbdyloclist)
+if (rbdy > 0 .and. obs_bdy_dist > 0.0_r8) &
+call get_close_init(rgc, rbdy, obs_bdy_dist/radius_meters, rbdyloclist)
+num_outside = 0   ! total number of observations outside the domain
+
 InputObsLoop:  do while ( .not. last_obs ) ! loop over all observations in a sequence
 
   nobs = nobs + 1
 
   ! Some compilers do not like mod by 0, so test first.
-  if (print_every_nth_obs > 0) nth_obs = mod(nobs, print_every_nth_obs)
+  nth_obs = 0
+  if (print_every_nth_obs > 0) nth_obs = mod(nobs, print_every_nth_obs) 
 
   ! If requested, print out a message every Nth observation
   ! to indicate progress is being made and to allow estimates
@@ -1051,10 +1133,13 @@ InputObsLoop:  do while ( .not. last_obs ) ! loop over all observations in a seq
   okind   = get_obs_def_type_of_obs(obs_def)
   obs_loc = get_obs_def_location(obs_def)
   cellid = cell_ok_to_interpolate(obs_loc)
-  if (cellid < 1) goto 100  ! exclude obs outside region and bdy cells
+  if (cellid < 1) then ! exclude obs outside region and bdy cells
+      num_outside = num_outside + 1   ! number of observations outside the domain
+      goto 100  
+  end if
+
   llv_loc = get_location(obs_loc)
   obs_time = get_obs_def_time(obs_def)
-
 
   !  check vertical location
   if ( (is_vertical(obs_loc, "PRESSURE") .and. llv_loc(3) < ptop) .or. &
@@ -1084,6 +1169,24 @@ InputObsLoop:  do while ( .not. last_obs ) ! loop over all observations in a seq
     call set_obs_def(obs_in, obs_def)
   
   end if
+
+  !!!!!!!!!!!!!!!!!!!!!!!!!
+  ! remove the observation if located within obs_bdy_dist [meters] from any boundary cell
+  !!!!!!!!!!!!!!!!!!!!!!!!!
+  if (rbdy > 0 .and. obs_bdy_dist > 0.0_r8) then 
+     ! compute min dist to any boundary cell in meters
+     call find_min_dist(rgc, obs_loc, rbdy, rbdyloclist, mindistbdy)
+
+     if ( mindistbdy <= obs_bdy_dist ) then
+   
+          prev_obs = obs_in
+          call get_next_obs(seq, prev_obs, obs_in, last_obs)
+          num_outside = num_outside + 1
+          cycle InputObsLoop
+   
+     end if
+   endif
+  !!!!!!!!!!!!!!!!!!!!!!!!!
 
   !  perform platform-specific checks
   select case (okind)
@@ -1200,6 +1303,11 @@ end do InputObsLoop
 call destroy_obs_sequence(seq)
 if ( obs_window ) &
 print*, 'Number of obs outside the time window in the input file:',num_excluded_bytime
+
+deallocate(rbdyloclist)
+if (rbdy > 0 .and. obs_bdy_dist > 0.0_r8) call get_close_destroy(rgc)
+if (num_outside > 0) &
+print*, 'Number of rejected obs outside or close to boundaries (obs_boundary) in file_name_input:',num_outside
 
 end subroutine read_and_parse_input_seq
 
@@ -2211,10 +2319,6 @@ call init_obs(prev_obs, get_num_copies(seq), get_num_qc(seq))
 ! count, allocate, and fill a location list
 call gather_bdy_cells(nbdy, bdyloclist)
 if (nbdy <= 0) return
-!do i=1, nbdy
-!   call write_location(0, bdyloclist(i), charstring=bob)
-!   write(*, *) bob
-!enddo
 call get_close_init(gc, nbdy, obsbdydist/radius_meters, bdyloclist)
 
 ! compute slope and intercept for error increase factor
@@ -2224,7 +2328,7 @@ intercept = maxfac
 last_obs = .false.
 if ( .not. get_first_obs(seq, obs) ) last_obs = .true.
 
-do while ( .not. last_obs )
+ObsLoop: do while ( .not. last_obs )
 
   !  get location information relative to domain 1 (skip nests)
   call get_obs_def(obs, obs_def)
@@ -2245,7 +2349,7 @@ do while ( .not. last_obs )
   prev_obs = obs
   call get_next_obs(seq, prev_obs, obs, last_obs)
 
-end do
+end do ObsLoop
 
 deallocate(bdyloclist)
 call get_close_destroy(gc)
@@ -2343,6 +2447,171 @@ mindist = mindist * radius_meters     ! back to meters
 deallocate(close_ind, dummy, dist)
 
 end subroutine find_min_dist
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!
+!   find_min_dist_index  - subroutine that returns the index and distance
+!                          of the closest observation to the cell centre
+!                         
+!    gc          - get close derived type
+!    cellloc     - cell currently being processed
+!    nlocs       - number of items in the loclist
+!    loclist     - list of observation locations
+!    minidx      - index of the closest observation to the cell centre 
+!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+subroutine find_min_dist_index(gc, cellloc, nlocs, loclist, mindist, minidx)
+type(get_close_type), intent(in)    :: gc
+type(location_type),  intent(inout) :: cellloc
+integer,              intent(in)    :: nlocs
+type(location_type),  intent(inout) :: loclist(:)
+integer,             intent(out)   :: minidx(1)
+
+integer :: num_close
+integer, allocatable :: close_ind(:), dummy(:)
+real(r8), allocatable :: dist(:)
+real(r8) :: mindist
+
+allocate(close_ind(nlocs), dummy(nlocs), dist(nlocs))
+dummy(:) = 1
+
+! FIXME: could call get_close() w/o replicating dummy in call
+call get_close_obs(gc, cellloc, 1, loclist, dummy, dummy, &
+                   num_close, close_ind, dist)
+
+if (num_close <= 0) then
+   mindist = HUGE(1.0_r8)
+   return
+endif
+
+minidx = minloc(dist(1:num_close))
+minidx(1) = close_ind(minidx(1))
+mindist = minval(dist(1:num_close))  ! radians here
+mindist = mindist * radius_meters     ! back to meters
+
+deallocate(close_ind, dummy, dist)
+
+end subroutine find_min_dist_index
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!
+!   thin_hydrosat_data - subroutine that thins hydrosat observations to nearest cell centre.
+!
+!    seq   - satellite Hydrosat observation sequence
+!    thresh_dist - maximum distance from cell centre to keep obs (metres)
+!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+subroutine thin_hydrosat_data(seq, ncell, thresh_dist, atime)
+
+
+type(obs_sequence_type), intent(inout) :: seq
+type(time_type),         intent(in)    :: atime
+real(r8),                intent(in)    :: thresh_dist
+integer                                :: ncell
+
+character(len=512)  :: string
+integer             :: icell
+integer             :: num_copies, num_qc, nloc, k, locdex, obs_kind, n, &
+                       num_obs, poleward_obs, nthin
+logical             :: last_obs
+integer             :: minidx(1)
+real(r8)            :: mindist
+
+real(r8),allocatable :: lat_cell(:), lon_cell(:)
+
+integer              :: ik
+
+type(location_type) :: obs_loc, cell_loc
+type(location_type), allocatable :: obs_loc_list(:)
+type(obs_type) :: obs_thin
+type(obs_type), allocatable :: obs_list(:)
+type(obs_def_type)  :: obs_def
+type(obs_type)      :: obs, prev_obs
+
+type(get_close_type)   :: rgc
+
+character(len=*), parameter :: routine = "thin_hydrosat_data"
+
+!-----------------------------------------------------------------------
+
+write(6,*)
+write(6,*) 'Thinning hydrosat data over ',ncell,' cells.'
+
+num_copies = get_num_copies(seq)
+num_obs    = get_num_obs(seq)
+
+allocate(obs_list(num_obs))
+allocate(obs_loc_list(num_obs))
+
+write(6,*) 'Thinning ',num_obs,' hydrosat data'
+write(6,*)
+
+call init_obs(obs,      num_copies, num_qc)
+call init_obs(prev_obs, num_copies, num_qc)
+
+last_obs = .false.  ;  nloc = 0  ;  poleward_obs = 0
+if ( .not. get_first_obs(seq, obs) )  last_obs = .true.
+
+
+! loop over all TC observations, find locations
+do while ( .not. last_obs )
+
+  call get_obs_def(obs, obs_def)
+  obs_loc = get_obs_def_location(obs_def)
+
+  nloc = nloc + 1
+  locdex = nloc
+  
+  obs_loc_list(locdex) = obs_loc
+  obs_list(locdex) = obs
+
+  prev_obs = obs
+  call get_next_obs(seq, prev_obs, obs, last_obs)
+
+end do
+
+!-----------------------------------------------------------------------
+
+write(*,*) 'Creating get_close structure'
+
+call get_close_init(rgc, nloc, thresh_dist/radius_meters, obs_loc_list)
+
+call get_cell_center_coords(ncell, lat_cell, lon_cell)
+
+call destroy_obs_sequence(seq)
+call create_new_obs_seq(num_copies, num_qc, num_obs, seq)
+call init_obs(obs, num_copies, num_qc)
+
+nthin = 0
+
+write(*,*) 'Looping through cells to find closest obs to each cell centre'
+
+!  loop over cells and find closest observation to each cell centre
+do n = 1, ncell
+
+  cell_loc = set_location(lon_cell(n), lat_cell(n), 1.0_r8, 1)
+
+  call find_min_dist_index(rgc, cell_loc, nloc, obs_loc_list, mindist, minidx)
+
+  if (mindist < thresh_dist) then 
+
+    nthin = nthin + 1
+
+    obs_thin = obs_list(minidx(1))
+    call insert_obs_in_seq(seq, obs_thin)
+
+  end if
+
+end do
+
+call get_close_destroy(rgc)
+
+deallocate(obs_list)
+deallocate(obs_loc_list)
+deallocate(lat_cell)
+deallocate(lon_cell)
+
+end subroutine thin_hydrosat_data
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
